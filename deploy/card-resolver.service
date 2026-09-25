@@ -1,0 +1,21 @@
+[Unit]
+Description=Card Resolver API
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=cardresolver
+Group=cardresolver
+WorkingDirectory=/opt/card-resolver
+EnvironmentFile=/etc/card-resolver.env
+ExecStart=/opt/card-resolver/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8010 --workers 2 --proxy-headers --forwarded-allow-ips 127.0.0.1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/card-resolver
+
+[Install]
+WantedBy=multi-user.target
