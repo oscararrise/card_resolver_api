@@ -6,7 +6,8 @@ from openpyxl import load_workbook
 from sqlalchemy import select
 
 from app import main
-from app.database import Base, Credential
+from app.database import Base, Credential, make_session
+from app.importer import stage
 
 
 def test_sample_roster_end_to_end(tmp_path, monkeypatch):
@@ -49,3 +50,19 @@ def test_sample_roster_end_to_end(tmp_path, monkeypatch):
         assert resolved.status_code == 200
         assert resolved.json()["employee"]["hibob_id"] == "48251"
         assert client.post("/api/v1/cards/decode", json={"raw": "89910480577"}).status_code == 401
+
+
+def test_conflicting_facility_card_never_identifies_an_employee():
+    engine, sessions = make_session("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    payload = ("EID,NOMBRE,APELLIDOS,No TARJETA,Facility Code WFM\n"
+               "101,First,Person,167794,1761\n"
+               "102,Second,Person,167794,1761\n"
+               "103,Third,Person,15339,2152\n").encode()
+    with sessions() as session:
+        batch = stage(session, "sample.csv", payload)
+        assert batch.errors == 1
+        assert batch.loaded == 1
+        assert batch.cards_count == 1
+        assert session.scalars(select(Credential).where(
+            Credential.batch_id == batch.id, Credential.card_number == 167794)).all() == []
