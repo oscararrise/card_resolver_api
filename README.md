@@ -29,11 +29,13 @@ set -a; . ./.env; set +a
 
 Para pruebas aisladas se puede usar `DATABASE_URL=sqlite:///./card_resolver.db`; producción debe usar PostgreSQL. No subir `.env` ni el roster a Git. La contraseña Basic y el token de servicio se toman del entorno y nunca se incluyen en JavaScript. Un navegador no debe invocar `/resolve` con el token incrustado: el backend consumidor debe añadirlo desde su servidor o usar un proxy autenticado y controlado en el mismo origen.
 
+En la VM ARRISE, `DATABASE_URL_PARAMETER`, `SERVICE_TOKEN_PARAMETER` y `ADMIN_PASSWORD_PARAMETER` son nombres de parámetros SSM SecureString cifrados con KMS; el rol IAM de la instancia requiere `ssm:GetParameter` y `kms:Decrypt` limitados a esos parámetros y su clave. El proceso resuelve los secretos al iniciarse o en el primer uso, los conserva en memoria y necesita reiniciarse tras rotarlos. `ADMIN_USER` no es secreto. Los valores directos de `.env.example` son solo para desarrollo.
+
 ## Producción
 
 1. Crear rol y base PostgreSQL privados, usuario Unix dedicado, instalación de dependencias en `/opt/card-resolver/.venv` y `/etc/card-resolver.env` legible solo por el servicio.
 2. Instalar `deploy/card-resolver.service`, revisar rutas y habilitar systemd. Las tablas se crean al arrancar; para cambios de esquema futuros incorporar migraciones antes de actualizar producción.
-3. Integrar `deploy/nginx.conf.example` en el servidor TLS existente, declarar las zonas `limit_req` en `http`, validar `nginx -t` y recargar. Exponer solo Nginx por HTTPS y restringir `/admin` a VPN/red de confianza.
+3. Integrar `deploy/nginx.conf.example` dentro del servidor TLS existente de Appearance (puerto 443), declarar la zona `limit_req` en `http`, validar `nginx -t` y recargar. Los endpoints públicos quedan bajo `/card-resolver/`: panel `/card-resolver/admin` y API `/card-resolver/api/v1/cards/resolve`. El proxy quita ese prefijo para FastAPI y evita pisar el `/admin` de Django. Restringir el panel a la VPN/red de confianza según la política de la VM.
 4. Subir el CSV al panel, descargar y revisar incidencias, confirmar con Data Analytics las reglas de reposición y el significado de EID, activar el lote y probar `89910480577` → facility `1761`, card `167794`, EID `48251`.
 5. Restringir acceso a los reportes (contienen nombres), configurar backups PostgreSQL, retención y supervisión; evitar registrar cuerpos de escaneo y credenciales.
 

@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, create_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship, sessionmaker
 
+from .config import setting
+
 
 class Base(DeclarativeBase):
     pass
@@ -55,5 +57,5 @@ class Active(Base):
 
 
 def make_session(url=None):
-    engine = create_engine(url or os.getenv("DATABASE_URL", "sqlite:///./card_resolver.db"), pool_pre_ping=True)
+    engine = create_engine(url or setting("DATABASE_URL") or "sqlite:///./card_resolver.db", pool_pre_ping=True)
     return engine, sessionmaker(engine, expire_on_commit=False)

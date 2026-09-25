@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from .database import Active, Base, Batch, Credential, Issue, make_session
 from .decoder import InvalidCard, decode
 from .importer import InvalidUpload, stage
+from .config import setting
 
 engine, Session = make_session()
 app = FastAPI(title="Card Resolver", docs_url=None, redoc_url=None)
@@ -30,7 +31,7 @@ def db():
 
 
 def api_auth(authorization: str | None = Header(default=None)):
-    token = os.getenv("SERVICE_TOKEN", "")
+    token = setting("SERVICE_TOKEN")
     if not token:
         raise HTTPException(503, "service token is not configured")
     if not authorization or not secrets.compare_digest(authorization, "Bearer " + token):
@@ -38,7 +39,7 @@ def api_auth(authorization: str | None = Header(default=None)):
 
 
 def admin_auth(credentials: HTTPBasicCredentials | None = Depends(basic)):
-    user, password = os.getenv("ADMIN_USER", ""), os.getenv("ADMIN_PASSWORD", "")
+    user, password = os.getenv("ADMIN_USER", ""), setting("ADMIN_PASSWORD")
     if not user or not password:
         raise HTTPException(503, "admin authentication is not configured")
     if not credentials or not (secrets.compare_digest(credentials.username, user) and
@@ -115,16 +116,17 @@ a{color:#126a54}li{margin:.75rem 0}</style><main><h1>Importaciones de tarjetas</
 <pre id="result" role="status"></pre><h2>Versiones</h2><ul id="versions"></ul></main>
 <script>
 const result=document.querySelector('#result');
-async function refresh(){const r=await fetch('/admin/imports');const list=await r.json();
+const adminBase=location.pathname.endsWith('/') ? location.pathname : location.pathname+'/';
+async function refresh(){const r=await fetch(adminBase+'imports');const list=await r.json();
 document.querySelector('#versions').replaceChildren(...list.map(b=>{
 const li=document.createElement('li');li.append(document.createTextNode(`Versión ${b.id}: ${b.status} · ${b.loaded} filas · ${b.cards} tarjetas · ${b.errors} errores · ${b.warnings} avisos · `));
-const a=document.createElement('a');a.href=`/admin/imports/${b.id}/report`;a.textContent='Descargar reporte';li.append(a);
+const a=document.createElement('a');a.href=adminBase+`imports/${b.id}/report`;a.textContent='Descargar reporte';li.append(a);
 if(b.status!=='active'){const button=document.createElement('button');button.textContent='Activar versión';
 button.onclick=async()=>{if(!confirm(`Revisé el reporte de la versión ${b.id}. ¿Activar ${b.cards} tarjetas?`))return;
-const form=new FormData();form.set('reviewed','true');const response=await fetch(`/admin/imports/${b.id}/activate`,{method:'POST',body:form});
+const form=new FormData();form.set('reviewed','true');const response=await fetch(adminBase+`imports/${b.id}/activate`,{method:'POST',body:form});
 result.textContent=JSON.stringify(await response.json(),null,2);refresh()};li.append(button)}return li}));}
 document.querySelector('#upload').onsubmit=async e=>{e.preventDefault();result.textContent='Procesando...';
-const r=await fetch('/admin/imports',{method:'POST',body:new FormData(e.target)});result.textContent=JSON.stringify(await r.json(),null,2);refresh()};refresh();
+const r=await fetch(adminBase+'imports',{method:'POST',body:new FormData(e.target)});result.textContent=JSON.stringify(await r.json(),null,2);refresh()};refresh();
 </script></html>"""
 
 
