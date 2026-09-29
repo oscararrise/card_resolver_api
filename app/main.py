@@ -104,28 +104,28 @@ def batch_data(batch):
 
 @app.get("/admin", response_class=HTMLResponse, dependencies=[Depends(admin_auth)])
 def admin_page():
-    return """<!doctype html><html lang="es"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Card Resolver · Importaciones</title><style>
+    return """<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Card Resolver · Imports</title><style>
 body{font:16px system-ui;background:#f3f6f5;color:#152c28;max-width:850px;margin:3rem auto;padding:0 1rem}
 main{background:#fff;padding:2rem;border-radius:14px;box-shadow:0 8px 30px #103f2d13}
 button,input{font:inherit;padding:.65rem;margin:.35rem}button{background:#126a54;color:white;border:0;border-radius:7px;cursor:pointer}
 button:disabled{opacity:.5}pre{white-space:pre-wrap;word-break:break-word;background:#f3f6f5;padding:1rem}
-a{color:#126a54}li{margin:.75rem 0}</style><main><h1>Importaciones de tarjetas</h1>
-<p>Sube el roster CSV o XLSX, revisa el reporte y activa la versión. Las reposiciones quedan pendientes de confirmar.</p>
-<form id="upload"><input type="file" name="file" accept=".csv,.xlsx" required><button>Cargar y validar</button></form>
-<pre id="result" role="status"></pre><h2>Versiones</h2><ul id="versions"></ul></main>
+a{color:#126a54}li{margin:.75rem 0}</style><main><h1>Card imports</h1>
+<p>Upload a CSV or XLSX roster, review the report, and activate the version. Replacement cards remain pending until their validity rules are confirmed.</p>
+<form id="upload"><input type="file" name="file" accept=".csv,.xlsx" required><button>Upload and validate</button></form>
+<pre id="result" role="status"></pre><h2>Versions</h2><ul id="versions"></ul></main>
 <script>
 const result=document.querySelector('#result');
 const adminBase=location.pathname.endsWith('/') ? location.pathname : location.pathname+'/';
 async function refresh(){const r=await fetch(adminBase+'imports');const list=await r.json();
 document.querySelector('#versions').replaceChildren(...list.map(b=>{
-const li=document.createElement('li');li.append(document.createTextNode(`Versión ${b.id}: ${b.status} · ${b.loaded} filas · ${b.cards} tarjetas · ${b.errors} errores · ${b.warnings} avisos · `));
-const a=document.createElement('a');a.href=adminBase+`imports/${b.id}/report`;a.textContent='Descargar reporte';li.append(a);
-if(b.status!=='active'){const button=document.createElement('button');button.textContent='Activar versión';
-button.onclick=async()=>{if(!confirm(`Revisé el reporte de la versión ${b.id}. ¿Activar ${b.cards} tarjetas?`))return;
+const li=document.createElement('li');li.append(document.createTextNode(`Version ${b.id}: ${b.status} · ${b.loaded} rows loaded · ${b.cards} cards · ${b.errors} errors · ${b.warnings} warnings · `));
+const a=document.createElement('a');a.href=adminBase+`imports/${b.id}/report`;a.textContent='Download report';li.append(a);
+if(b.status!=='active'){const button=document.createElement('button');button.textContent='Activate version';
+button.onclick=async()=>{if(!confirm(`I reviewed the report for version ${b.id}. Activate ${b.cards} cards?`))return;
 const form=new FormData();form.set('reviewed','true');const response=await fetch(adminBase+`imports/${b.id}/activate`,{method:'POST',body:form});
 result.textContent=JSON.stringify(await response.json(),null,2);refresh()};li.append(button)}return li}));}
-document.querySelector('#upload').onsubmit=async e=>{e.preventDefault();result.textContent='Procesando...';
+document.querySelector('#upload').onsubmit=async e=>{e.preventDefault();result.textContent='Processing...';
 const r=await fetch(adminBase+'imports',{method:'POST',body:new FormData(e.target)});result.textContent=JSON.stringify(await r.json(),null,2);refresh()};refresh();
 </script></html>"""
 
