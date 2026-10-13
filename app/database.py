@@ -59,3 +59,17 @@ class Active(Base):
 def make_session(url=None):
     engine = create_engine(url or setting("DATABASE_URL") or "sqlite:///./card_resolver.db", pool_pre_ping=True)
     return engine, sessionmaker(engine, expire_on_commit=False)
+
+
+class CardMapping(Base):
+    """Persistent administrator-managed overrides independent of imported batches."""
+    __tablename__ = "card_mappings"
+    __table_args__ = (UniqueConstraint("facility_code", "card_number", name="uq_card_mappings_key"),)
+    id: Mapped[int] = mapped_column(primary_key=True)
+    facility_code: Mapped[int] = mapped_column(Integer, nullable=False)
+    card_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    hibob_id: Mapped[str] = mapped_column(String(80), nullable=False)
+    raw: Mapped[str] = mapped_column(String(20), nullable=False)
+    format: Mapped[str] = mapped_column(String(32), nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                                                onupdate=lambda: datetime.now(timezone.utc))
