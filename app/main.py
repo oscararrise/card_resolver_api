@@ -89,7 +89,7 @@ def decode_card(data: CardRequest):
     return {"raw": data.raw, "decoder": parsed(data)}
 
 
-@app.post("/api/v1/cards/mapping", dependencies=[Depends(admin_auth)])
+@app.post("/api/v1/cards/mapping", dependencies=[Depends(admin_auth), Depends(same_origin)])
 def upsert_card_mapping(data: CardMappingRequest, session=Depends(db)):
     """Create a persistent card-to-HiBob override, or explicitly replace its owner."""
     try:
