@@ -7,10 +7,10 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from openpyxl import Workbook
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import func, select
 
-from .database import Active, Base, Batch, Credential, Issue, make_session
+from .database import Active, Base, Batch, Credential, Issue, CardMapping, make_session
 from .decoder import InvalidCard, decode
 from .importer import InvalidUpload, stage
 from .config import setting
@@ -58,6 +58,20 @@ class CardRequest(BaseModel):
     format: str = "auto"
 
 
+class CardMappingRequest(BaseModel):
+    card_number_raw: str = Field(min_length=1, max_length=20)
+    hibob_id: str = Field(min_length=1, max_length=80)
+    format: str = "auto"
+    overwrite: bool = False
+
+    @field_validator("hibob_id")
+    @classmethod
+    def valid_hibob_id(cls, value: str) -> str:
+        if not value.isdigit():
+            raise ValueError("hibob_id must contain only digits")
+        return value
+
+
 def parsed(data):
     try:
         return decode(data.raw, data.format)
@@ -75,10 +89,53 @@ def decode_card(data: CardRequest):
     return {"raw": data.raw, "decoder": parsed(data)}
 
 
+@app.post("/api/v1/cards/update", dependencies=[Depends(admin_auth), Depends(same_origin)])
+def upsert_card_mapping(data: CardMappingRequest, session=Depends(db)):
+    """Create a persistent card-to-HiBob override, or explicitly replace its owner."""
+    try:
+        result = decode(data.card_number_raw, data.format)
+    except InvalidCard as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+    mapping = session.scalar(select(CardMapping).where(
+        CardMapping.facility_code == result["facility_code"],
+        CardMapping.card_number == result["card_number"]).with_for_update())
+
+    if mapping is not None and mapping.hibob_id != data.hibob_id and not data.overwrite:
+        raise HTTPException(409, "card already mapped to a different HiBob ID; set overwrite=true to reassign")
+
+    status = "created" if mapping is None else ("updated" if mapping.hibob_id != data.hibob_id else "unchanged")
+    if mapping is None:
+        mapping = CardMapping(
+            facility_code=result["facility_code"], card_number=result["card_number"],
+            hibob_id=data.hibob_id, raw=data.card_number_raw, format=result["format"])
+        session.add(mapping)
+    else:
+        mapping.hibob_id = data.hibob_id
+        mapping.raw = data.card_number_raw
+        mapping.format = result["format"]
+    session.commit()
+    return {"status": status, "card_number_raw": data.card_number_raw,
+            "decoder": result, "hibob_id": mapping.hibob_id}
+
+
 @app.post("/api/v1/cards/resolve", dependencies=[Depends(api_auth)])
 def resolve_card(data: CardRequest, session=Depends(db)):
     result = parsed(data)
+    override = session.scalar(select(CardMapping).where(
+        CardMapping.facility_code == result["facility_code"],
+        CardMapping.card_number == result["card_number"]))
     active = session.get(Active, 1)
+    if override is not None:
+        employee_name = None
+        if active is not None:
+            employee_name = session.scalar(select(Credential.full_name).where(
+                Credential.batch_id == active.batch_id,
+                Credential.eid == override.hibob_id).limit(1))
+        return {"raw": data.raw, "decoder": result,
+                "employee": {"hibob_id": override.hibob_id, "name": employee_name},
+                "dataset_id": active.batch_id if active is not None else None,
+                "source": "manual_mapping"}
     if not active:
         raise HTTPException(503, "no active dataset")
     rows = session.scalars(select(Credential).where(
@@ -93,6 +150,7 @@ def resolve_card(data: CardRequest, session=Depends(db)):
     return {"raw": data.raw, "decoder": result,
             "employee": {"hibob_id": match.eid, "name": match.full_name},
             "dataset_id": active.batch_id}
+
 
 
 def batch_data(batch):
