@@ -144,12 +144,30 @@ def resolve_card(data: CardRequest, session=Depends(db)):
         Credential.card_number == result["card_number"]).limit(2)).all()
     if len(rows) > 1:
         raise HTTPException(409, "ambiguous card")
-    if not rows:
+    if rows:
+        match = rows[0]
+        return {"raw": data.raw, "decoder": result,
+                "employee": {"hibob_id": match.eid, "name": match.full_name},
+                "dataset_id": active.batch_id, "source": "exact_facility_card"}
+
+    # Readers can report a facility code different from the roster's WFM/SE
+    # facility code. Only fall back when every matching card belongs to one EID.
+    # Never use LIMIT 1 or a first-match heuristic for identity resolution.
+    card_rows = session.scalars(select(Credential).where(
+        Credential.batch_id == active.batch_id,
+        Credential.card_number == result["card_number"])).all()
+    if not card_rows:
         raise HTTPException(404, "card not found")
-    match = rows[0]
+    matched_eids = {row.eid for row in card_rows}
+    if len(matched_eids) != 1:
+        raise HTTPException(409, "ambiguous card number across facility codes")
+    match = card_rows[0]
     return {"raw": data.raw, "decoder": result,
             "employee": {"hibob_id": match.eid, "name": match.full_name},
-            "dataset_id": active.batch_id}
+            "dataset_id": active.batch_id,
+            "source": "unique_card_number_fallback",
+            "facility_mismatch": True,
+            "roster_facility_codes": sorted({row.facility_code for row in card_rows})}
 
 
 
