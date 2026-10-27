@@ -143,6 +143,17 @@ def stage(session, filename, payload):
             except ValueError as exc:
                 issue(row_no, "error", "INVALID_CARD", f"{source}: {exc}")
                 continue
+            if fc is None and source == "WFM" and fc_secondary_col is not None:
+                # Some rosters omit WFM facility but the same employee has a
+                # documented SE facility. Treat it as a candidate only; the
+                # collision check below must still reject cross-EID matches.
+                try:
+                    fc = parse_facility(cell(fc_secondary_col))
+                except ValueError:
+                    fc = None
+                if fc is not None:
+                    issue(row_no, "warning", "WFM_FACILITY_FROM_SE",
+                          f"WFM: facility code inferred from SE ({fc}); verify reader configuration")
             if fc is None:
                 issue(row_no, "error", "MISSING_FACILITY", f"{source}: card has no facility code")
                 continue
